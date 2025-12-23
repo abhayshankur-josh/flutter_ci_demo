@@ -9,6 +9,9 @@ jobs:
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - name: Checkout source
@@ -37,7 +40,30 @@ jobs:
         run: flutter build apk --debug
 
       - name: Upload APK artifact
+        id: upload-artifact
         uses: actions/upload-artifact@v4
         with:
           name: flutter-debug-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
+
+      - name: Update PR description with APK download link
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/${{ steps.upload-artifact.outputs.artifact-id }}"
+          
+          # Get current PR body
+          CURRENT_BODY=$(gh pr view ${{ github.event.pull_request.number }} --json body -q '.body')
+          
+          # Remove old artifact section if exists
+          CLEANED_BODY=$(echo "$CURRENT_BODY" | sed '/---/,/📦 \*\*Download Debug APK\*\*/d' | sed '/^\[Download flutter-debug-apk\]/d')
+          
+          # Create new body with artifact link
+          NEW_BODY="${CLEANED_BODY}
+
+          ---
+          📦 **Download Debug APK**
+          [Download flutter-debug-apk](${ARTIFACT_URL})"
+          
+          # Update PR description
+          gh pr edit ${{ github.event.pull_request.number }} --body "$NEW_BODY"
